@@ -1,6 +1,6 @@
 This is a command line utility for running the random shapelet forest
-on univariate time series in the file format found in the (UCR time
-series repository)[http://www.cs.ucr.edu/~eamonn/time_series_data/].
+on univariate time series in the file format found in the [UCR time
+series repository](http://www.cs.ucr.edu/~eamonn/time_series_data/).
 
 To compile, you need Maven
 

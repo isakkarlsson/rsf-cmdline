@@ -37,8 +37,8 @@ import org.briljantframework.mimir.shapelet.Shapelet;
  */
 public class Main {
   public static void main(String[] args) {
-    args = new String[] {"-p", "-n", "100", "-l", "0.025", "-u", "0.2", "synthetic_control_TRAIN",
-        "synthetic_control_TEST"};
+//    args = new String[] {"-p", "-n", "100", "-l", "0.025", "-u", "0.2", "synthetic_control_TRAIN",
+//        "synthetic_control_TEST"};
     Options options = new Options();
 
     options.addOption("n", "no-trees", true, "Number of trees");

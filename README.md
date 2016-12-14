@@ -16,8 +16,8 @@ using
     -n,--no-trees <arg>   Number of trees
     -r,--sample <arg>     Number of shapelets
     -u,--upper <arg>      Upper shapelet size (fraction of length, e.g, 0.8)
-	
-	
+    -p,--print-shapelets  Print the shapelets employed in the forest
+    -m,--multivariate     The give dataset is in multivariate format
+
 A pre-compiled binary can be found in the `binary`-folder.
-    
    

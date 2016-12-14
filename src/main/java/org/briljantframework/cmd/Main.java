@@ -38,9 +38,9 @@ import org.briljantframework.mimir.shapelet.Shapelet;
  */
 public class Main {
   public static void main(String[] args) {
-    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
-        "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
-        "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
+//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
+//        "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
+//        "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
     Options options = new Options();
 
     options.addOption("n", "no-trees", true, "Number of trees");

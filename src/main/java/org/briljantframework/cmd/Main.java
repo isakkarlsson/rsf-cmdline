@@ -38,9 +38,9 @@ import org.briljantframework.mimir.shapelet.Shapelet;
  */
 public class Main {
   public static void main(String[] args) {
-//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
-//        "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
-//        "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
+    // args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
+    // "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
+    // "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
     Options options = new Options();
 
     options.addOption("n", "no-trees", true, "Number of trees");
@@ -108,31 +108,10 @@ public class Main {
             }
           };
 
-      // RandomShapeletForest.Configurator configurator =
-      // new RandomShapeletForest.Configurator(noTrees);
-      // configurator.setLowerLength(lower);
-      // configurator.setUpperLength(upper);
-      // configurator.setMaximumShapelets(r);
-
       RandomPatternForest.Learner<MultivariateTimeSeries, Object> rsf =
-          new RandomPatternForest.Learner<MultivariateTimeSeries, Object>(patternFactory,
-              patternDistance, noTrees);
+          new RandomPatternForest.Learner<>(patternFactory, patternDistance, noTrees);
       rsf.set(PatternTree.PATTERN_COUNT, r);
 
-      // RandomShapeletForest.Learner rsf = configurator.configure();
-
-      // DataSeriesCollection.Builder trainDataBuilder =
-      // new DataSeriesCollection.Builder(double.class);
-      // MatlabDatasetReader trainReader = new MatlabDatasetReader(new FileInputStream(trainFile));
-      // trainDataBuilder.readAll(trainReader);
-      //
-      // DataSeriesCollection.Builder testDataBuilder = new
-      // DataSeriesCollection.Builder(double.class);
-      // MatlabDatasetReader testReader = new MatlabDatasetReader(new FileInputStream(testFile));
-      // testDataBuilder.readAll(testReader);
-
-      // DataFrame train = trainDataBuilder.build();
-      // DataFrame test = testDataBuilder.build();
       Pair<Input<MultivariateTimeSeries>, Output<Object>> train;
       Pair<Input<MultivariateTimeSeries>, Output<Object>> test;
       if (cmd.hasOption("m")) {
@@ -142,7 +121,6 @@ public class Main {
         train = readData(files.get(0));
         test = readData(files.get(1));
       }
-
 
       ClassifierValidator<MultivariateTimeSeries, Object> validator =
           ClassifierValidator.holdoutValidator(test.getFirst(), test.getSecond());

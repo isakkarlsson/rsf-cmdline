@@ -2,6 +2,7 @@ package org.briljantframework.cmd;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,8 +38,9 @@ import org.briljantframework.mimir.shapelet.Shapelet;
  */
 public class Main {
   public static void main(String[] args) {
-//    args = new String[] {"-p", "-n", "100", "-l", "0.025", "-u", "0.2", "synthetic_control_TRAIN",
-//        "synthetic_control_TEST"};
+    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
+        "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
+        "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
     Options options = new Options();
 
     options.addOption("n", "no-trees", true, "Number of trees");
@@ -46,6 +48,7 @@ public class Main {
     options.addOption("u", "upper", true, "Upper shapelet size (fraction of length, e.g, 0.8)");
     options.addOption("r", "sample", true, "Number of shapelets");
     options.addOption("p", "print-shapelets", false, "Print the shapelets of the forest");
+    options.addOption("m", "multivariate", false, "The given dataset is in a multivariate format");
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
@@ -130,9 +133,15 @@ public class Main {
 
       // DataFrame train = trainDataBuilder.build();
       // DataFrame test = testDataBuilder.build();
-
-      Pair<Input<MultivariateTimeSeries>, Output<Object>> train = readData(files.get(0));
-      Pair<Input<MultivariateTimeSeries>, Output<Object>> test = readData(files.get(1));
+      Pair<Input<MultivariateTimeSeries>, Output<Object>> train;
+      Pair<Input<MultivariateTimeSeries>, Output<Object>> test;
+      if (cmd.hasOption("m")) {
+        train = readMtsData(files.get(0));
+        test = readMtsData(files.get(1));
+      } else {
+        train = readData(files.get(0));
+        test = readData(files.get(1));
+      }
 
 
       ClassifierValidator<MultivariateTimeSeries, Object> validator =
@@ -141,15 +150,17 @@ public class Main {
 
 
       List<MultivariateShapelet> shapelets = new ArrayList<>();
-      validator.add(ctx -> {
-        RandomPatternForest<MultivariateTimeSeries, Object> f =
-            (RandomPatternForest<MultivariateTimeSeries, Object>) ctx.getPredictor();
-        for (ProbabilityEstimator<MultivariateTimeSeries, Object> m : f.getEnsembleMembers()) {
-          PatternTree<MultivariateTimeSeries, Object> t =
-              (PatternTree<MultivariateTimeSeries, Object>) m;
-          extractShapelets(shapelets, t.getRootNode());
-        }
-      });
+      if (print) {
+        validator.add(ctx -> {
+          RandomPatternForest<MultivariateTimeSeries, Object> f =
+              (RandomPatternForest<MultivariateTimeSeries, Object>) ctx.getPredictor();
+          for (ProbabilityEstimator<MultivariateTimeSeries, Object> m : f.getEnsembleMembers()) {
+            PatternTree<MultivariateTimeSeries, Object> t =
+                (PatternTree<MultivariateTimeSeries, Object>) m;
+            extractShapelets(shapelets, t.getRootNode());
+          }
+        });
+      }
 
       Result<Object> result = validator.test(rsf, train.getFirst(), train.getSecond());
 
@@ -178,7 +189,7 @@ public class Main {
       System.out.println("*******");
       Series measures = result.getMeasures().reduce(Series::mean);
       for (Object key : measures.index()) {
-        System.out.printf("%s:  %.2f\n", key, measures.getDouble(key));
+        System.out.printf("%s:  %.4f\n", key, measures.getDouble(key));
       }
       System.out.println(" ---- ---- ---- ---- ");
       System.out.printf("Runtime (training)  %.2f ms\n", result.getFitTime());
@@ -218,13 +229,49 @@ public class Main {
       String[] split = line.trim().split("\\s+");
       output.add(Double.parseDouble(split[0]));
 
-      double[] ts = new double[split.length - 1];
-      for (int i = 1; i < split.length; i++) {
-        ts[i - 1] = Double.parseDouble(split[i]);
-      }
-      // adding the same dimension twice - as an example. Each time-series should be distinct here.
-      input.add(new MultivariateTimeSeries(TimeSeries.of(ts)));
+      TimeSeries timeSeries = getTimeSeries(1, split);
+      input.add(new MultivariateTimeSeries(timeSeries));
     }
     return new Pair<>(input, output);
   }
+
+  private static TimeSeries getTimeSeries(int start, String[] split) {
+    double[] ts = new double[split.length - start];
+    for (int i = start; i < split.length; i++) {
+      ts[i - start] = Double.parseDouble(split[i]);
+    }
+    // adding the same dimension twice - as an example. Each time-series should be distinct here.
+    return TimeSeries.of(ts);
+  }
+
+  private static Pair<Input<MultivariateTimeSeries>, Output<Object>> readMtsData(String folder)
+      throws IOException {
+    Input<MultivariateTimeSeries> input = new ArrayInput<>();
+    Output<Object> output = new ArrayOutput<>();
+
+    String data = new String(Files.readAllBytes(Paths.get(folder, "classes.dat")));
+    Collections.addAll(output, data.trim().split(","));
+
+    List<Path> files = new ArrayList<>();
+    Files.newDirectoryStream(Paths.get(folder, "data")).forEach(files::add);
+    files.sort((a, b) -> getNameWithoutExt(a).compareTo(getNameWithoutExt(b)));
+
+    for (Path exampleFile : files) {
+      List<String> lines = Files.readAllLines(exampleFile);
+      TimeSeries[] mts = new TimeSeries[lines.size()];
+      for (int i = 0; i < lines.size(); i++) {
+        String line = lines.get(i);
+        String[] split = line.trim().split(",");
+        mts[i] = getTimeSeries(0, split);
+      }
+      input.add(new MultivariateTimeSeries(mts));
+    }
+    return new Pair<>(input, output);
+  }
+
+  private static Integer getNameWithoutExt(Path a) {
+    String name = a.getFileName().toString();
+    return Integer.parseInt(name.split("\\.")[0]);
+  }
+
 }

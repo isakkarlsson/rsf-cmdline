@@ -49,6 +49,8 @@ public class Main {
     options.addOption("r", "sample", true, "Number of shapelets");
     options.addOption("p", "print-shapelets", false, "Print the shapelets of the forest");
     options.addOption("m", "multivariate", false, "The given dataset is in a multivariate format");
+    options.addOption("c", "cv", true, "Cross-validation");
+
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
@@ -112,21 +114,39 @@ public class Main {
           new RandomPatternForest.Learner<>(patternFactory, patternDistance, noTrees);
       rsf.set(PatternTree.PATTERN_COUNT, r);
 
+
       Pair<Input<MultivariateTimeSeries>, Output<Object>> train;
-      Pair<Input<MultivariateTimeSeries>, Output<Object>> test;
-      if (cmd.hasOption("m")) {
-        train = readMtsData(files.get(0));
-        test = readMtsData(files.get(1));
+      ClassifierValidator<MultivariateTimeSeries, Object> validator;
+      if (cmd.hasOption("c")) {
+        Input<MultivariateTimeSeries> t = new ArrayInput<>();
+        Output<Object> o = new ArrayOutput<>();
+        if (cmd.hasOption("m")) {
+          for (String file : files) {
+            Pair<Input<MultivariateTimeSeries>, Output<Object>> data = readMtsData(file);
+            t.addAll(data.getFirst());
+            o.addAll(data.getSecond());
+          }
+        } else {
+          for (String file : files) {
+            Pair<Input<MultivariateTimeSeries>, Output<Object>> data = readData(file);
+            t.addAll(data.getFirst());
+            o.addAll(data.getSecond());
+          }
+        }
+        train = new Pair<>(t, o);
+        validator = ClassifierValidator.crossValidator(Integer.parseInt(cmd.getOptionValue("c", "10")));
       } else {
-        train = readData(files.get(0));
-        test = readData(files.get(1));
+        Pair<Input<MultivariateTimeSeries>, Output<Object>> test;
+        if (cmd.hasOption("m")) {
+          train = readMtsData(files.get(0));
+          test = readMtsData(files.get(1));
+        } else {
+          train = readData(files.get(0));
+          test = readData(files.get(1));
+        }
+        validator = ClassifierValidator.holdoutValidator(test.getFirst(), test.getSecond());
       }
-
-      ClassifierValidator<MultivariateTimeSeries, Object> validator =
-          ClassifierValidator.holdoutValidator(test.getFirst(), test.getSecond());
       validator.add(EnsembleEvaluator.getInstance());
-
-
       List<MultivariateShapelet> shapelets = new ArrayList<>();
       if (print) {
         validator.add(ctx -> {

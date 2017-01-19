@@ -9,7 +9,7 @@ To compile, you need Maven
 This will create a JAR-file in the `target` directory which can be run
 using
 
-    java -jar name-of-jar-file [OPTIONS] trainFile testFile
+    java -jar rsf-cmdline-1.0-SNAPSHOT-jar-with-dependencies.jar [OPTIONS] trainFile testFile
 
     usage: rsfcmd.jar [OPTIONS] trainFile testFile
     -l,--lower <arg>      Lower shapelet size (fraction of length, e.g, 0.05)

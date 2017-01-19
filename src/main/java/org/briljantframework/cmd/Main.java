@@ -32,15 +32,23 @@ import org.briljantframework.mimir.distance.EarlyAbandonSlidingDistance;
 import org.briljantframework.mimir.evaluation.Result;
 import org.briljantframework.mimir.shapelet.IndexSortedNormalizedShapelet;
 import org.briljantframework.mimir.shapelet.Shapelet;
+import org.briljantframework.util.sort.ElementSwapper;
 
 /**
  * A simple command line utility for running the random shapelet forest.
  */
 public class Main {
   public static void main(String[] args) {
-    // args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-m",
-    // "/Users/isak/mts_example/mts_data/CharacterTrajectories/train",
-    // "/Users/isak/mts_example/mts_data/CharacterTrajectories/test"};
+//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-c", "10", "-r", "10",
+//        "synthetic_control_TRAIN", "synthetic_control_TEST"};
+
+    // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
+    // /Users/isak/Downloads/dataSets/Cricket/xright.txt
+    // /Users/isak/Downloads/dataSets/Cricket/yleft.txt
+    // /Users/isak/Downloads/dataSets/Cricket/yright.txt
+    // /Users/isak/Downloads/dataSets/Cricket/zleft.txt
+    // /Users/isak/Downloads/dataSets/Cricket/zright.txt";
+    // args = s.split(" ");
     Options options = new Options();
 
     options.addOption("n", "no-trees", true, "Number of trees");
@@ -50,7 +58,8 @@ public class Main {
     options.addOption("p", "print-shapelets", false, "Print the shapelets of the forest");
     options.addOption("m", "multivariate", false, "The given dataset is in a multivariate format");
     options.addOption("c", "cv", true, "Cross-validation");
-
+    options.addOption("w", "weird", false, "Weird mts-format");
+    options.addOption("s", "split", true, "Weird mts-format");
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
@@ -117,10 +126,17 @@ public class Main {
 
       Pair<Input<MultivariateTimeSeries>, Output<Object>> train;
       ClassifierValidator<MultivariateTimeSeries, Object> validator;
-      if (cmd.hasOption("c")) {
+      if (cmd.hasOption("c") || cmd.hasOption("s")) {
         Input<MultivariateTimeSeries> t = new ArrayInput<>();
         Output<Object> o = new ArrayOutput<>();
-        if (cmd.hasOption("m")) {
+        if (cmd.hasOption("m") && cmd.hasOption("w")) {
+          List<Pair<Input<MultivariateTimeSeries>, Output<Object>>> list = new ArrayList<>();
+          for (String file : files) {
+            list.add(readData(file));
+          }
+          t.addAll(getMultivariateTimeSeries(list));
+          o.addAll(list.get(0).getSecond());
+        } else if (cmd.hasOption("m")) {
           for (String file : files) {
             Pair<Input<MultivariateTimeSeries>, Output<Object>> data = readMtsData(file);
             t.addAll(data.getFirst());
@@ -133,13 +149,45 @@ public class Main {
             o.addAll(data.getSecond());
           }
         }
+        ((ElementSwapper) (a, b) -> {
+          MultivariateTimeSeries tmp = t.get(a);
+          t.set(a, t.get(b));
+          t.set(b, tmp);
+
+          Object tmp2 = o.get(a);
+          o.set(a, o.get(b));
+          o.set(b, tmp2);
+        }).permute(t.size());
         train = new Pair<>(t, o);
-        validator = ClassifierValidator.crossValidator(Integer.parseInt(cmd.getOptionValue("c", "10")));
+        if (cmd.hasOption("c")) {
+          validator =
+              ClassifierValidator.crossValidator(Integer.parseInt(cmd.getOptionValue("c", "10")));
+        } else {
+          validator = ClassifierValidator
+              .splitValidator(Double.parseDouble(cmd.getOptionValue("s", "0.3")));
+        }
       } else {
         Pair<Input<MultivariateTimeSeries>, Output<Object>> test;
         if (cmd.hasOption("m")) {
-          train = readMtsData(files.get(0));
-          test = readMtsData(files.get(1));
+          if (files.size() == 2) {
+            train = readMtsData(files.get(0));
+            test = readMtsData(files.get(1));
+          } else {
+            List<Pair<Input<MultivariateTimeSeries>, Output<Object>>> lTest = new ArrayList<>();
+            List<Pair<Input<MultivariateTimeSeries>, Output<Object>>> lTrain = new ArrayList<>();
+            for (int i = 0; i < files.size() - 1; i += 2) {
+              String trainFile = files.get(i);
+              String testFile = files.get(i + 1);
+              Pair<Input<MultivariateTimeSeries>, Output<Object>> pTrain = readData(trainFile);
+              Pair<Input<MultivariateTimeSeries>, Output<Object>> pTest = readData(testFile);
+              lTrain.add(pTrain);
+              lTest.add(pTest);
+            }
+            Input<MultivariateTimeSeries> testIn = getMultivariateTimeSeries(lTest);
+            Input<MultivariateTimeSeries> trainIn = getMultivariateTimeSeries(lTrain);
+            train = new Pair<>(trainIn, lTrain.get(0).getSecond());
+            test = new Pair<>(testIn, lTest.get(0).getSecond());
+          }
         } else {
           train = readData(files.get(0));
           test = readData(files.get(1));
@@ -200,6 +248,20 @@ public class Main {
     }
   }
 
+  private static Input<MultivariateTimeSeries> getMultivariateTimeSeries(
+      List<Pair<Input<MultivariateTimeSeries>, Output<Object>>> data) {
+    Input<MultivariateTimeSeries> input = new ArrayInput<>();
+    int n = data.get(0).getFirst().size();
+    for (int i = 0; i < n; i++) {
+      TimeSeries[] trainSeries = new TimeSeries[data.size()];
+      for (int j = 0; j < data.size(); j++) {
+        trainSeries[j] = data.get(j).getFirst().get(i).getDimension(0);
+      }
+      input.add(new MultivariateTimeSeries(trainSeries));
+    }
+    return input;
+  }
+
   private static void extractShapelets(List<MultivariateShapelet> shapelets,
       TreeNode<MultivariateTimeSeries, ?> node) {
     if (node instanceof TreeLeaf) {
@@ -222,10 +284,10 @@ public class Main {
 
     // Read the file
     List<String> data = Files.readAllLines(Paths.get(filePath));
-    Collections.shuffle(data, ThreadLocalRandom.current());
+    // Collections.shuffle(data, ThreadLocalRandom.current());
     for (String line : data) {
       String[] split = line.trim().split("\\s+");
-      output.add(Double.parseDouble(split[0]));
+      output.add((int) Double.parseDouble(split[0]));
 
       TimeSeries timeSeries = getTimeSeries(1, split);
       input.add(new MultivariateTimeSeries(timeSeries));
@@ -238,7 +300,6 @@ public class Main {
     for (int i = start; i < split.length; i++) {
       ts[i - start] = Double.parseDouble(split[i]);
     }
-    // adding the same dimension twice - as an example. Each time-series should be distinct here.
     return TimeSeries.of(ts);
   }
 

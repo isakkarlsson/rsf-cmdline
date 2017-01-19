@@ -4,7 +4,7 @@ series repository](http://www.cs.ucr.edu/~eamonn/time_series_data/).
 
 To compile, you need Maven
 
-    mvn clean install assemble:single
+    mvn clean install assembly:single
 
 This will create a JAR-file in the `target` directory which can be run
 using

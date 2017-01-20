@@ -39,7 +39,7 @@ import org.briljantframework.util.sort.ElementSwapper;
  */
 public class Main {
   public static void main(String[] args) {
-//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-c", "10", "-r", "10",
+//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-s", "0.3", "-r", "10",
 //        "synthetic_control_TRAIN", "synthetic_control_TEST"};
 
     // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
@@ -57,9 +57,9 @@ public class Main {
     options.addOption("r", "sample", true, "Number of shapelets");
     options.addOption("p", "print-shapelets", false, "Print the shapelets of the forest");
     options.addOption("m", "multivariate", false, "The given dataset is in a multivariate format");
-    options.addOption("c", "cv", true, "Cross-validation");
+    options.addOption("c", "cv", true, "Combine datasets and run cross validation");
     options.addOption("w", "weird", false, "Weird mts-format");
-    options.addOption("s", "split", true, "Weird mts-format");
+    options.addOption("s", "split", true, "Combine datasets and use split validation");
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
@@ -227,8 +227,10 @@ public class Main {
       for (Option o : cmd.getOptions()) {
         System.out.printf("%s:  %s\n", o.getLongOpt(), o.getValue("[default]"));
       }
-      System.out.printf("Training data '%s'\n", files.get(0));
-      System.out.printf("Testing data  '%s'\n", files.get(1));
+      if (files.size() == 2) {
+        System.out.printf("Training data '%s'\n", files.get(0));
+        System.out.printf("Testing data  '%s'\n", files.get(1));
+      }
       System.out.println(" ---- ---- ---- ---- ");
 
       System.out.println("\nResults");

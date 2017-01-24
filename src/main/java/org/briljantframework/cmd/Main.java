@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -39,8 +40,8 @@ import org.briljantframework.util.sort.ElementSwapper;
  */
 public class Main {
   public static void main(String[] args) {
-//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-s", "0.3", "-r", "10",
-//        "synthetic_control_TRAIN", "synthetic_control_TEST"};
+    // args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-r", "10", "-o",
+    // "synthetic_control_TRAIN", "synthetic_control_TEST"};
 
     // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
     // /Users/isak/Downloads/dataSets/Cricket/xright.txt
@@ -60,6 +61,8 @@ public class Main {
     options.addOption("c", "cv", true, "Combine datasets and run cross validation");
     options.addOption("w", "weird", false, "Weird mts-format");
     options.addOption("s", "split", true, "Combine datasets and use split validation");
+    options.addOption("o", "optimize", false, "optimize the parameters using oob");
+    options.addOption("d", "csv-delim", false, "Present the results as a comma separated list");
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
@@ -74,41 +77,6 @@ public class Main {
         throw new RuntimeException("Training/testing data missing");
       }
 
-      PatternFactory<MultivariateTimeSeries, MultivariateShapelet> patternFactory =
-          new PatternFactory<MultivariateTimeSeries, MultivariateShapelet>() {
-
-            /**
-             * @param inputs the input dataset
-             * @param classSet the inputs included in the current bootstrap.
-             * @return a shapelet
-             */
-            public MultivariateShapelet createPattern(
-                Input<? extends MultivariateTimeSeries> inputs, ClassSet classSet) {
-              MultivariateTimeSeries mts =
-                  inputs.get(classSet.getRandomSample().getRandomExample().getIndex());
-              ThreadLocalRandom random = ThreadLocalRandom.current();
-              int randomDim = random.nextInt(mts.dimensions());
-              TimeSeries uts = mts.getDimension(randomDim);
-
-              int MIN_LEN = 2, MAX_LEN = uts.size();
-              if (lower > 0) {
-                int frac = (int) Math.round(uts.size() * lower);
-                MIN_LEN = frac > 2 ? frac : MIN_LEN;
-              }
-
-              if (upper > 0) {
-                int frac = (int) Math.round(uts.size() * upper);
-                MAX_LEN = frac > MIN_LEN ? frac : MAX_LEN;
-              }
-
-              int length = random.nextInt(MIN_LEN, MAX_LEN - 1);
-              int start = random.nextInt(0, uts.size() - length - 1);
-              // int length = random.nextInt(MIN_LEN, uts.size() - start);
-              return new MultivariateShapelet(randomDim,
-                  new IndexSortedNormalizedShapelet(start, length, uts));
-            }
-          };
-
       // Compute the minimum distance between the shapelet and the time series
       PatternDistance<MultivariateTimeSeries, MultivariateShapelet> patternDistance =
           new PatternDistance<MultivariateTimeSeries, MultivariateShapelet>() {
@@ -118,11 +86,6 @@ public class Main {
               return distance.compute(a.getDimension(b.getDimension()), b.getShapelet());
             }
           };
-
-      RandomPatternForest.Learner<MultivariateTimeSeries, Object> rsf =
-          new RandomPatternForest.Learner<>(patternFactory, patternDistance, noTrees);
-      rsf.set(PatternTree.PATTERN_COUNT, r);
-
 
       Pair<Input<MultivariateTimeSeries>, Output<Object>> train;
       ClassifierValidator<MultivariateTimeSeries, Object> validator;
@@ -207,8 +170,63 @@ public class Main {
           }
         });
       }
+      Result<Object> result = null;
+      double totalFitTime = 0;
+      double totalPredictTime = 0;
+      double[] minLu = null;
+      int minR = -1;
+      if (cmd.hasOption("o")) {
+        //@formatter:off
+        double[][] lowerUpper = {
+            {0.025, 1},
+            {0.025, 0.1},
+            {0.025, 0.2},
+            {0.025, 0.3},
+            {0.025, 0.4},
+            {0.2, 0.5},
+            {0.3, 0.6},
+            {0.6, 1},
+            {0.7, 1},
+            {0.8, 1},
+            {0.9, 1}
+        };
+        //@formatter:on
 
-      Result<Object> result = validator.test(rsf, train.getFirst(), train.getSecond());
+        int[] ropt = {1, 10,50,100, 500, -1};
+        double minOobError = Double.POSITIVE_INFINITY;
+        for (double[] lu : lowerUpper) {
+          for (int rv : ropt) {
+            if (rv == -1) {
+              int m = train.getFirst().get(0).getDimension(0).size();
+              int d = train.getFirst().get(0).dimensions();
+              rv = (int) Math.sqrt(m * d * (m * d + 1) / 2);
+            }
+            PatternFactory<MultivariateTimeSeries, MultivariateShapelet> patternFactory =
+                getPatternFactory(lu[0], lu[1]);
+
+            RandomPatternForest.Learner<MultivariateTimeSeries, Object> rsf =
+                new RandomPatternForest.Learner<>(patternFactory, patternDistance, noTrees);
+            rsf.set(PatternTree.PATTERN_COUNT, rv);
+            Result<Object> res = validator.test(rsf, train.getFirst(), train.getSecond());
+            totalFitTime += res.getFitTime();
+            totalPredictTime += res.getPredictTime();
+            Series measures = res.getMeasures().reduce(Series::mean);
+            if (measures.getDouble("oobError") < minOobError) {
+              result = res;
+              minLu = lu;
+              minR = rv;
+            }
+          }
+        }
+      } else {
+        PatternFactory<MultivariateTimeSeries, MultivariateShapelet> patternFactory =
+            getPatternFactory(lower, upper);
+
+        RandomPatternForest.Learner<MultivariateTimeSeries, Object> rsf =
+            new RandomPatternForest.Learner<>(patternFactory, patternDistance, noTrees);
+        rsf.set(PatternTree.PATTERN_COUNT, r);
+        result = validator.test(rsf, train.getFirst(), train.getSecond());
+      }
 
       if (print) {
         shapelets.sort((a, b) -> Integer.compare(a.getShapelet().size(), b.getShapelet().size()));
@@ -222,32 +240,93 @@ public class Main {
         }
       }
 
-      System.out.println("Parameters");
-      System.out.println("**********");
-      for (Option o : cmd.getOptions()) {
-        System.out.printf("%s:  %s\n", o.getLongOpt(), o.getValue("[default]"));
-      }
-      if (files.size() == 2) {
-        System.out.printf("Training data '%s'\n", files.get(0));
-        System.out.printf("Testing data  '%s'\n", files.get(1));
-      }
-      System.out.println(" ---- ---- ---- ---- ");
-
-      System.out.println("\nResults");
-      System.out.println("*******");
       Series measures = result.getMeasures().reduce(Series::mean);
-      for (Object key : measures.index()) {
-        System.out.printf("%s:  %.4f\n", key, measures.getDouble(key));
-      }
-      System.out.println(" ---- ---- ---- ---- ");
-      System.out.printf("Runtime (training)  %.2f ms\n", result.getFitTime());
-      System.out.printf("Runtime (testing)   %.2f ms\n", result.getPredictTime());
+      if (cmd.hasOption("d")) {
+        // Format as csv
+        // accuracy, aucRoc, totalFitTime, totalPredictTime, lu, r
+        System.out.println(measures.get("accuracy") + "," + measures.get("aucRoc") + "," + totalFitTime + "," + totalPredictTime + "," + Arrays.toString(minLu) + "," + minR);
+      } else {
+        System.out.println("Parameters");
+        System.out.println("**********");
+        for (Option o : cmd.getOptions()) {
+          System.out.printf("%s:  %s\n", o.getLongOpt(), o.getValue("[default]"));
+        }
+        if (files.size() == 2) {
+          System.out.printf("Training data '%s'\n", files.get(0));
+          System.out.printf("Testing data  '%s'\n", files.get(1));
+        }
+        System.out.println(" ---- ---- ---- ---- ");
 
+        System.out.println("\nResults");
+        System.out.println("*******");
+        for (Object key : measures.index()) {
+          System.out.printf("%s:  %.4f\n", key, measures.getDouble(key));
+        }
+        System.out.println(" ---- ---- ---- ---- ");
+        System.out.printf("Runtime (training)  %.2f ms\n", result.getFitTime());
+        System.out.printf("Runtime (testing)   %.2f ms\n", result.getPredictTime());
+      }
     } catch (Exception e) {
       HelpFormatter formatter = new HelpFormatter();
       e.printStackTrace();
       formatter.printHelp("rsfcmd.jar [OPTIONS] trainFile testFile", options);
     }
+  }
+
+  private static PatternFactory<MultivariateTimeSeries, MultivariateShapelet> getPatternFactory(
+      final double lowFrac, final double uppFrac) {
+    return new PatternFactory<MultivariateTimeSeries, MultivariateShapelet>() {
+
+      /**
+       * @param inputs the input dataset
+       * @param classSet the inputs included in the current bootstrap.
+       * @return a shapelet
+       */
+      public MultivariateShapelet createPattern(Input<? extends MultivariateTimeSeries> inputs,
+          ClassSet classSet) {
+        MultivariateTimeSeries mts =
+            inputs.get(classSet.getRandomSample().getRandomExample().getIndex());
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int randomDim = random.nextInt(mts.dimensions());
+        TimeSeries uts = mts.getDimension(randomDim);
+        int timeSeriesLength = uts.size();
+        int upper = (int) Math.round(timeSeriesLength * uppFrac);
+        int lower = (int) Math.round(timeSeriesLength * lowFrac);
+        if (lower < 2) {
+          lower = 2;
+        }
+
+        if (Math.addExact(upper, lower) > timeSeriesLength) {
+          upper = timeSeriesLength - lower;
+        }
+        if (lower == upper) {
+          upper -= 2;
+        }
+        if (upper < 1) {
+          return null;
+        }
+
+        int length = ThreadLocalRandom.current().nextInt(upper) + lower;
+        int start = ThreadLocalRandom.current().nextInt(timeSeriesLength - length);
+//
+//        int MIN_LEN = 2, MAX_LEN = uts.size();
+//        if (lower > 0) {
+//          int frac = (int) Math.round(uts.size() * lower);
+//          MIN_LEN = frac > 2 ? frac : MIN_LEN;
+//        }
+//
+//        if (upper > 0) {
+//          int frac = (int) Math.round(uts.size() * upper);
+//          MAX_LEN = frac > MIN_LEN ? frac : MAX_LEN;
+//        }
+//
+//        int length = random.nextInt(MIN_LEN, MAX_LEN - 1);
+//        int start = random.nextInt(0, uts.size() - length - 1);
+        // int length = random.nextInt(MIN_LEN, uts.size() - start);
+        return new MultivariateShapelet(randomDim,
+            new IndexSortedNormalizedShapelet(start, length, uts));
+      }
+    };
   }
 
   private static Input<MultivariateTimeSeries> getMultivariateTimeSeries(

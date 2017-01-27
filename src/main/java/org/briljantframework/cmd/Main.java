@@ -40,8 +40,8 @@ import org.briljantframework.util.sort.ElementSwapper;
  */
 public class Main {
   public static void main(String[] args) {
-    // args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-r", "10", "-o",
-    // "synthetic_control_TRAIN", "synthetic_control_TEST"};
+//     args = new String[] {"-n", "500", "-l", "0.025", "-u", "1", "-r", "10", "-o", "-d",
+//     "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TRAIN", "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TEST"};
 
     // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
     // /Users/isak/Downloads/dataSets/Cricket/xright.txt
@@ -215,6 +215,7 @@ public class Main {
               result = res;
               minLu = lu;
               minR = rv;
+              minOobError = measures.getDouble("oobError");
             }
           }
         }
@@ -308,21 +309,6 @@ public class Main {
 
         int length = ThreadLocalRandom.current().nextInt(upper) + lower;
         int start = ThreadLocalRandom.current().nextInt(timeSeriesLength - length);
-//
-//        int MIN_LEN = 2, MAX_LEN = uts.size();
-//        if (lower > 0) {
-//          int frac = (int) Math.round(uts.size() * lower);
-//          MIN_LEN = frac > 2 ? frac : MIN_LEN;
-//        }
-//
-//        if (upper > 0) {
-//          int frac = (int) Math.round(uts.size() * upper);
-//          MAX_LEN = frac > MIN_LEN ? frac : MAX_LEN;
-//        }
-//
-//        int length = random.nextInt(MIN_LEN, MAX_LEN - 1);
-//        int start = random.nextInt(0, uts.size() - length - 1);
-        // int length = random.nextInt(MIN_LEN, uts.size() - start);
         return new MultivariateShapelet(randomDim,
             new IndexSortedNormalizedShapelet(start, length, uts));
       }

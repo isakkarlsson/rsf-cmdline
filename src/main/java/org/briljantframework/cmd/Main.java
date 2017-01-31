@@ -1,18 +1,18 @@
 package org.briljantframework.cmd;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.apache.commons.cli.*;
 import org.apache.commons.math3.util.Pair;
 import org.briljantframework.data.series.Series;
+import org.briljantframework.mimir.classification.ClassifierEvaluator;
 import org.briljantframework.mimir.classification.ClassifierValidator;
 import org.briljantframework.mimir.classification.EnsembleEvaluator;
 import org.briljantframework.mimir.classification.ProbabilityEstimator;
@@ -24,14 +24,15 @@ import org.briljantframework.mimir.classification.tree.pattern.PatternDistance;
 import org.briljantframework.mimir.classification.tree.pattern.PatternFactory;
 import org.briljantframework.mimir.classification.tree.pattern.PatternTree;
 import org.briljantframework.mimir.classification.tree.pattern.RandomPatternForest;
-import org.briljantframework.mimir.data.ArrayInput;
-import org.briljantframework.mimir.data.ArrayOutput;
-import org.briljantframework.mimir.data.Input;
-import org.briljantframework.mimir.data.Output;
+import org.briljantframework.mimir.data.*;
+import org.briljantframework.mimir.data.timeseries.MultivariateTimeSeries;
 import org.briljantframework.mimir.data.timeseries.TimeSeries;
 import org.briljantframework.mimir.distance.EarlyAbandonSlidingDistance;
 import org.briljantframework.mimir.evaluation.Result;
+import org.briljantframework.mimir.evaluation.partition.Partition;
+import org.briljantframework.mimir.evaluation.partition.Partitioner;
 import org.briljantframework.mimir.shapelet.IndexSortedNormalizedShapelet;
+import org.briljantframework.mimir.shapelet.MultivariateShapelet;
 import org.briljantframework.mimir.shapelet.Shapelet;
 import org.briljantframework.util.sort.ElementSwapper;
 
@@ -39,9 +40,24 @@ import org.briljantframework.util.sort.ElementSwapper;
  * A simple command line utility for running the random shapelet forest.
  */
 public class Main {
+
+  private static long getTotalThreadCPUTime() {
+    ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+    threadMXBean.setThreadCpuTimeEnabled(true);
+    long[] ids = threadMXBean.getAllThreadIds();
+    long sum = 0;
+    for (long id : ids) {
+      long contrib = threadMXBean.getThreadCpuTime(id);
+      if (contrib != -1)
+        sum += contrib;
+    }
+    return sum;
+  }
+
   public static void main(String[] args) {
-//     args = new String[] {"-n", "500", "-l", "0.025", "-u", "1", "-r", "10", "-o", "-d",
-//     "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TRAIN", "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TEST"};
+    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-r", "10",
+        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TRAIN",
+        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TEST"};
 
     // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
     // /Users/isak/Downloads/dataSets/Cricket/xright.txt
@@ -155,7 +171,39 @@ public class Main {
           train = readData(files.get(0));
           test = readData(files.get(1));
         }
-        validator = ClassifierValidator.holdoutValidator(test.getFirst(), test.getSecond());
+        // validator = ClassifierValidator.holdoutValidator(test.getFirst(), test.getSecond());
+        validator = new ClassifierValidator<MultivariateTimeSeries, Object>(
+            Collections.singleton(ClassifierEvaluator.getInstance()),
+            new Partitioner<MultivariateTimeSeries, Object>() {
+              @Override
+              public Collection<Partition<MultivariateTimeSeries, Object>> partition(
+                  Input<? extends MultivariateTimeSeries> x, Output<?> y) {
+                return Collections.singleton(new Partition<>(Inputs.unmodifiableInput(x),
+                    Inputs.unmodifiableInput(test.getFirst()), Outputs.unmodifiableOutput(y),
+                    Outputs.unmodifiableOutput(test.getSecond())));
+              }
+            }) {
+
+          @Override
+          protected long preFit() {
+            return getTotalThreadCPUTime();
+          }
+
+          @Override
+          protected double postFit(long start) {
+            return getTotalThreadCPUTime()/1e6;
+          }
+
+          @Override
+          protected long prePredict() {
+            return getTotalThreadCPUTime();
+          }
+
+          @Override
+          protected double postPredict(long start) {
+            return getTotalThreadCPUTime()/1e6;
+          }
+        };
       }
       validator.add(EnsembleEvaluator.getInstance());
       List<MultivariateShapelet> shapelets = new ArrayList<>();
@@ -264,8 +312,8 @@ public class Main {
           System.out.printf("%s:  %.4f\n", key, measures.getDouble(key));
         }
         System.out.println(" ---- ---- ---- ---- ");
-        System.out.printf("Runtime (training)  %.2f ms\n", result.getFitTime());
-        System.out.printf("Runtime (testing)   %.2f ms\n", result.getPredictTime());
+        System.out.printf("Runtime (training)  %.2f ms (CPU TIME)\n", result.getFitTime());
+        System.out.printf("Runtime (testing)   %.2f ms (CPU TIME)\n", result.getPredictTime());
       }
     } catch (Exception e) {
       HelpFormatter formatter = new HelpFormatter();

@@ -55,9 +55,9 @@ public class Main {
   }
 
   public static void main(String[] args) {
-    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-r", "10",
-        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TRAIN",
-        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TEST"};
+//    args = new String[] {"-n", "100", "-l", "0.025", "-u", "1", "-r", "10",
+//        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TRAIN",
+//        "/Users/isak/Projects/rsf-cmdline/dataset/Trace/Trace_TEST"};
 
     // String s = "-r 10 -s 0.3 -m -w /Users/isak/Downloads/dataSets/Cricket/xleft.txt
     // /Users/isak/Downloads/dataSets/Cricket/xright.txt
